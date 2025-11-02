@@ -7,33 +7,42 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        // Firebase integration placeholder - Set window.firestoreDB to null for demo mode
+        // To enable Firebase: replace this with proper Firebase SDK initialization
+        window.firestoreDB = null;
+        window.firestoreDoc = null;
+        window.firestoreSetDoc = null;
+        window.firestoreOnSnapshot = null;
+        window.firestoreGetDoc = null;
+        console.log('Running in demo mode (local play only)');
+        
+        // To enable Firebase multiplayer:
+        // 1. Uncomment the module script below
+        // 2. Add your Firebase config credentials
+        // 3. Remove the lines above setting window.firestoreDB to null
+    </script>
+    <!-- Firebase Module (Optional - for multiplayer)
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getFirestore, doc, setDoc, onSnapshot, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-        // Firebase configuration - Use your actual Firebase config here
-        // For now, we'll store this globally but note: in production, use environment variables
         const firebaseConfig = {
-            apiKey: "YOUR_API_KEY_HERE",
+            apiKey: "YOUR_FIREBASE_API_KEY",
             authDomain: "YOUR_PROJECT.firebaseapp.com",
             projectId: "YOUR_PROJECT_ID"
         };
         
-        let app, db;
-        try {
-            app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            window.firestoreDB = db;
-            window.firestoreDoc = doc;
-            window.firestoreSetDoc = setDoc;
-            window.firestoreOnSnapshot = onSnapshot;
-            window.firestoreGetDoc = getDoc;
-            console.log('Firebase initialized successfully');
-        } catch (error) {
-            console.warn('Firebase initialization failed (demo mode):', error.message);
-            window.firestoreDB = null;
-        }
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        window.firestoreDB = db;
+        window.firestoreDoc = doc;
+        window.firestoreSetDoc = setDoc;
+        window.firestoreOnSnapshot = onSnapshot;
+        window.firestoreGetDoc = getDoc;
+        console.log('Firebase initialized - multiplayer enabled');
     </script>
+    -->
     <style>
         body {
             margin: 0;
@@ -644,29 +653,64 @@
         class ChessRenderer {
             constructor(gameState) {
                 this.gameState = gameState;
-                this.scene = new THREE.Scene();
-                this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-                this.renderer = new THREE.WebGLRenderer({ antialias: true });
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.shadowMap.enabled = true;
-                document.getElementById('canvas-container').appendChild(this.renderer.domElement);
+                this.webGLAvailable = this.checkWebGLSupport();
+                
+                if (!this.webGLAvailable) {
+                    this.showWebGLError();
+                    return;
+                }
+                
+                try {
+                    this.scene = new THREE.Scene();
+                    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+                    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                    this.renderer.shadowMap.enabled = true;
+                    document.getElementById('canvas-container').appendChild(this.renderer.domElement);
 
-                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
-                this.camera.position.set(0, 12, 12);
-                this.controls.target.set(0, 0, 0);
-                this.controls.update();
+                    this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                    this.camera.position.set(0, 12, 12);
+                    this.controls.target.set(0, 0, 0);
+                    this.controls.update();
 
-                this.raycaster = new THREE.Raycaster();
-                this.mouse = new THREE.Vector2();
-                this.selectedPiece = null;
-                this.highlightedSquares = [];
-                this.pieces3D = [];
+                    this.raycaster = new THREE.Raycaster();
+                    this.mouse = new THREE.Vector2();
+                    this.selectedPiece = null;
+                    this.highlightedSquares = [];
+                    this.pieces3D = [];
 
-                this.setupScene();
-                this.createBoard();
-                this.createPieces();
-                this.setupEventListeners();
-                this.animate();
+                    this.setupScene();
+                    this.createBoard();
+                    this.createPieces();
+                    this.setupEventListeners();
+                    this.animate();
+                } catch (error) {
+                    console.warn('3D renderer initialization failed:', error.message);
+                    this.showWebGLError();
+                }
+            }
+            
+            checkWebGLSupport() {
+                try {
+                    const canvas = document.createElement('canvas');
+                    return !!(window.WebGLRenderingContext && 
+                            (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+                } catch(e) {
+                    return false;
+                }
+            }
+            
+            showWebGLError() {
+                const container = document.getElementById('canvas-container');
+                container.innerHTML = `
+                    <div class="flex items-center justify-center h-full">
+                        <div class="bg-yellow-900/80 backdrop-blur-sm text-white rounded-lg p-8 max-w-2xl mx-4">
+                            <h2 class="text-2xl font-bold mb-4">WebGL Not Available</h2>
+                            <p class="mb-4">The 3D chess board requires WebGL support, which is not available in your current environment.</p>
+                            <p class="text-sm text-gray-300">The game logic is fully functional - you can still use the dice controls and the game will track moves in the background. To see the 3D visualization, please open this page in a browser with WebGL support.</p>
+                        </div>
+                    </div>
+                `;
             }
 
             setupScene() {
