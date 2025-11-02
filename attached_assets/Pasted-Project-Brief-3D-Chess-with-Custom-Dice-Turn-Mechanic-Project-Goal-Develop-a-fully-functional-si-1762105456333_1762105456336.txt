@@ -1,0 +1,81 @@
+Project Brief: 3D Chess with Custom Dice Turn Mechanic
+
+Project Goal: Develop a fully functional, single-file 3D chess game that implements a custom, dice-based mechanic for turn continuation. The application must be built using pure HTML/CSS/JavaScript, utilizing the Three.js library for all 3D rendering.
+
+I. Technical & Architectural Requirements
+
+Single-File Mandate: All HTML structure, CSS styling (use Tailwind CSS for the 2D UI elements), and JavaScript logic (including Three.js initialization) must be contained within a single index.html file.
+
+3D Engine: Use Three.js (loadable via CDN) for the entire chess board and piece rendering.
+
+Networking/Multiplayer Structure: The game must be structured for two players (White and Black). Assume a local-multiplayer or simple networked structure where a game_state object is managed. The core logic should handle two distinct players/clients. For persistence and synchronization, the game must initialize and use Firestore to store the real-time game state (board positions, current turn, dice rolls) under the path: /artifacts/{__app_id}/public/data/dice_chess_games/{gameId}.
+
+Aesthetics: The 3D environment must be visually clean, modern, and easy to navigate. The 2D UI elements (like the dice roller and status panel) must be responsive and visually appealing using Tailwind CSS.
+
+II. Core Game Mechanics (The Dice Rule)
+
+The turn sequence is determined by a virtual six-sided die (d6) roll, which must be clearly visible and animated in the UI.
+
+A. Initial Turn Determination (Setup Phase)
+
+Both players (White and Black) must individually click a "Roll to Start" button.
+
+The goal is to roll a '1'.
+
+First Turn Rule: The first player to roll a '1' gets to move first (White if the roll is concurrent).
+
+Re-Roll Condition: If neither player rolls a '1', or if both roll the same non-'1' number, they must re-roll until a single player rolls a '1'.
+
+B. In-Game Turn Continuation (Play Phase)
+
+Once the game starts, the turn sequence follows this rule:
+
+Current Player Moves: The current player selects and makes a valid chess move.
+
+Dice Roll for Continuation: After a valid move, the current player immediately rolls the d6 again.
+
+Continuation Condition:
+
+If the player rolls a '1': Their turn continues. They can make another move and immediately roll again.
+
+If the player rolls a '2', '3', '4', '5', or '6': Their turn ends, and the turn passes to the opponent.
+
+III. 3D Visualization & Interaction
+
+Chess Board: Render an 8x8 checkerboard plane with appropriate materials. The board must be labeled (A-H, 1-8) for reference.
+
+Pieces: Render standard chess pieces (Pawn, Rook, Knight, Bishop, Queen, King) using simple, identifiable 3D geometry (e.g., use basic primitive shapes or simple extrusions; no complex textures/models needed).
+
+White and Black pieces must be clearly distinguishable by color/material.
+
+Camera & Controls: Implement orbit controls (Three.js OrbitControls) to allow the user to rotate and zoom around the board. The default view should be a perspective angle suitable for the current player.
+
+Interaction:
+
+Clicking a piece highlights it.
+
+Clicking a valid target square highlights the square and executes the move.
+
+Implement basic check/checkmate detection and display a game-over message.
+
+IV. User Interface (2D UI) Requirements
+
+Status Panel: Display the following non-3D elements clearly outside the canvas:
+
+Current Player (e.g., "White's Turn" or "Black's Continuous Turn").
+
+Last Dice Roll Result.
+
+Game Status (e.g., "Check," "Checkmate," "Waiting for Opponent," "Roll to Start").
+
+Dice Roller Button: A prominent button labeled "Roll Dice" that triggers the dice animation and logic during the setup and play phases. This button should be disabled when it's not the player's turn or a move is pending.
+
+Reset Button: A button to reset the game to its initial state.
+
+User ID: Display the current authenticated userId for multiplayer coordination.
+
+V. Implementation Details
+
+Use a robust chess engine library (e.g., chess.js logic implemented internally) to validate moves, check for check/checkmate, and manage the internal board state, separate from the Three.js rendering.
+
+Ensure that the dice roll and turn passing logic correctly enforces the continuous turn rule based on the '1' result.
