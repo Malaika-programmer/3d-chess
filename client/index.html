@@ -1,1045 +1,1474 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Chess - Dice Turn Mechanic</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script>
-        // Firebase integration placeholder - Set window.firestoreDB to null for demo mode
-        // To enable Firebase: replace this with proper Firebase SDK initialization
-        window.firestoreDB = null;
-        window.firestoreDoc = null;
-        window.firestoreSetDoc = null;
-        window.firestoreOnSnapshot = null;
-        window.firestoreGetDoc = null;
-        console.log('Running in demo mode (local play only)');
-        
-        // To enable Firebase multiplayer:
-        // 1. Uncomment the module script below
-        // 2. Add your Firebase config credentials
-        // 3. Remove the lines above setting window.firestoreDB to null
-    </script>
-    <!-- Firebase Module (Optional - for multiplayer)
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { getFirestore, doc, setDoc, onSnapshot, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Dice Chess</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        const firebaseConfig = {
-            apiKey: "YOUR_FIREBASE_API_KEY",
-            authDomain: "YOUR_PROJECT.firebaseapp.com",
-            projectId: "YOUR_PROJECT_ID"
-        };
-        
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        window.firestoreDB = db;
-        window.firestoreDoc = doc;
-        window.firestoreSetDoc = setDoc;
-        window.firestoreOnSnapshot = onSnapshot;
-        window.firestoreGetDoc = getDoc;
-        console.log('Firebase initialized - multiplayer enabled');
-    </script>
-    -->
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        #canvas-container {
-            width: 100%;
-            height: 100vh;
-            position: relative;
-        }
-        .ui-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            pointer-events: none;
-        }
-        .ui-overlay > * {
-            pointer-events: auto;
-        }
-    </style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+  }
+
+  #canvas-container canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* ── Layout ── */
+  .ui-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+    display: grid;
+    grid-template-columns: 280px 1fr 280px;
+    grid-template-rows: 1fr;
+    gap: 0;
+    padding: 16px;
+  }
+
+  .panel {
+    pointer-events: auto;
+    background: rgba(13, 17, 23, 0.88);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+  }
+
+  .panel-center {
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+  }
+
+  /* ── Status Panel (left) ── */
+  .panel-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #7d8590;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    padding-bottom: 10px;
+  }
+
+  .player-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+  }
+
+  .player-badge.active {
+    background: rgba(56,139,253,0.12);
+    border-color: #388bfd;
+  }
+
+  .player-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,0.3);
+  }
+
+  .player-dot.white { background: #f0f0f0; }
+  .player-dot.black { background: #1a1a1a; border-color: rgba(255,255,255,0.5); }
+
+  .player-info { flex: 1; min-width: 0; }
+  .player-name { font-size: 14px; font-weight: 600; }
+  .player-roll  { font-size: 12px; color: #7d8590; margin-top: 2px; }
+
+  .status-box {
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+
+  .status-label { font-size: 11px; color: #7d8590; margin-bottom: 4px; font-weight: 600; }
+  .status-value { font-size: 14px; font-weight: 600; }
+  .status-value.check  { color: #f85149; }
+  .status-value.checkmate { color: #f85149; }
+  .status-value.ok  { color: #3fb950; }
+  .status-value.info { color: #388bfd; }
+
+  .move-log {
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+    padding: 10px 14px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 80px;
+    max-height: 200px;
+  }
+
+  .move-log-entry {
+    font-size: 12px;
+    color: #8b949e;
+    padding: 2px 0;
+    font-family: 'Courier New', monospace;
+  }
+
+  .user-id-line {
+    font-size: 11px;
+    color: #7d8590;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .user-id-line span { color: #388bfd; font-family: monospace; }
+
+  /* ── Top Center Status Bar ── */
+  .top-bar {
+    pointer-events: auto;
+    background: rgba(13, 17, 23, 0.9);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 10px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    align-self: flex-start;
+    white-space: nowrap;
+  }
+
+  .top-bar-player {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .top-bar-status {
+    font-size: 13px;
+    color: #8b949e;
+  }
+
+  .top-bar-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(255,255,255,0.12);
+  }
+
+  /* ── Dice Panel (right) ── */
+  .dice-display {
+    text-align: center;
+    padding: 16px 0;
+  }
+
+  .dice-face {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 10px;
+    background: linear-gradient(145deg, #21262d, #161b22);
+    border: 2px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    transition: transform 0.1s ease;
+    user-select: none;
+  }
+
+  .dice-face.rolling {
+    animation: diceRoll 0.6s ease-in-out;
+  }
+
+  @keyframes diceRoll {
+    0%   { transform: rotate(0deg) scale(1); }
+    25%  { transform: rotate(15deg) scale(0.95); }
+    50%  { transform: rotate(-10deg) scale(1.05); }
+    75%  { transform: rotate(5deg) scale(0.95); }
+    100% { transform: rotate(0deg) scale(1); }
+  }
+
+  .dice-result {
+    font-size: 13px;
+    color: #8b949e;
+  }
+
+  .dice-result .roll-num {
+    font-size: 22px;
+    font-weight: 700;
+    color: #e6edf3;
+    display: block;
+  }
+
+  .dice-result .roll-num.one { color: #3fb950; }
+  .dice-result .roll-num.other { color: #f85149; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+    letter-spacing: 0.3px;
+  }
+
+  .btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none !important;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #388bfd, #1f6feb);
+    color: #fff;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #58a6ff, #388bfd);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(56,139,253,0.35);
+  }
+
+  .btn-danger {
+    background: rgba(248, 81, 73, 0.12);
+    color: #f85149;
+    border: 1px solid rgba(248, 81, 73, 0.3);
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    background: rgba(248, 81, 73, 0.22);
+    transform: translateY(-1px);
+  }
+
+  .btn-success {
+    background: linear-gradient(135deg, #3fb950, #2ea043);
+    color: #fff;
+  }
+
+  /* ── Instructions ── */
+  .instruction-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .instruction-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    color: #8b949e;
+    line-height: 1.5;
+  }
+
+  .instruction-item .icon {
+    font-size: 14px;
+    flex-shrink: 0;
+    margin-top: -1px;
+  }
+
+  .instruction-item strong { color: #e6edf3; }
+
+  /* ── Phase indicator ── */
+  .phase-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(56,139,253,0.15);
+    color: #388bfd;
+    border: 1px solid rgba(56,139,253,0.3);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .phase-badge.playing { background: rgba(63,185,80,0.15); color: #3fb950; border-color: rgba(63,185,80,0.3); }
+  .phase-badge.ended   { background: rgba(248,81,73,0.15); color: #f85149; border-color: rgba(248,81,73,0.3); }
+
+  /* ── WebGL fallback ── */
+  .webgl-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    background: #0d1117;
+  }
+
+  .webgl-fallback-box {
+    max-width: 480px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 14px;
+    padding: 36px;
+    text-align: center;
+  }
+
+  .webgl-fallback-box h2 { font-size: 20px; margin-bottom: 12px; color: #e6edf3; }
+  .webgl-fallback-box p  { font-size: 14px; color: #8b949e; line-height: 1.6; }
+
+  /* ── Game over overlay ── */
+  #game-over-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(0,0,0,0.7);
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(6px);
+  }
+
+  #game-over-overlay.visible { display: flex; }
+
+  .game-over-box {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 20px;
+    padding: 48px;
+    text-align: center;
+    max-width: 400px;
+  }
+
+  .game-over-box .trophy { font-size: 56px; margin-bottom: 16px; }
+  .game-over-box h2 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .game-over-box p  { font-size: 15px; color: #8b949e; margin-bottom: 28px; }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .ui-layer {
+      grid-template-columns: 220px 1fr 220px;
+    }
+  }
+</style>
 </head>
-<body class="bg-gray-900">
-    <div id="canvas-container"></div>
-    
-    <!-- UI Overlay -->
-    <div class="ui-overlay">
-        <!-- Top Status Panel -->
-        <div class="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black/80 backdrop-blur-sm text-white rounded-lg p-4 min-w-[400px]">
-            <div class="text-center mb-2">
-                <h2 class="text-2xl font-bold mb-1" id="current-player">White's Turn</h2>
-                <p class="text-sm text-gray-300" id="game-status">Setup Phase - Roll to Start</p>
-            </div>
-            <div class="grid grid-cols-2 gap-2 text-sm mt-3">
-                <div class="bg-white/10 rounded p-2">
-                    <span class="text-gray-400">White Last Roll:</span>
-                    <span class="font-bold ml-1" id="white-roll">-</span>
-                </div>
-                <div class="bg-white/10 rounded p-2">
-                    <span class="text-gray-400">Black Last Roll:</span>
-                    <span class="font-bold ml-1" id="black-roll">-</span>
-                </div>
-            </div>
-            <div class="mt-2 text-xs text-gray-400 text-center">
-                User ID: <span id="user-id" class="font-mono">player-12345</span>
-            </div>
-        </div>
+<body>
 
-        <!-- Dice Controls -->
-        <div class="absolute top-4 right-4 bg-black/80 backdrop-blur-sm text-white rounded-lg p-4">
-            <div class="text-center mb-3">
-                <div class="text-6xl font-bold mb-2" id="dice-display">🎲</div>
-                <div class="text-sm text-gray-400">Last Roll: <span id="last-dice-value">-</span></div>
-            </div>
-            <button id="roll-dice-btn" 
-                    class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-colors">
-                Roll Dice
-            </button>
-            <button id="reset-btn" 
-                    class="w-full mt-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-colors">
-                Reset Game
-            </button>
-        </div>
+<!-- 3D Canvas -->
+<div id="canvas-container"></div>
 
-        <!-- Instructions -->
-        <div class="absolute bottom-4 left-4 bg-black/80 backdrop-blur-sm text-white rounded-lg p-4 max-w-md">
-            <h3 class="font-bold mb-2">Game Rules:</h3>
-            <ul class="text-sm space-y-1 text-gray-300">
-                <li>• <strong>Setup:</strong> Both players roll for '1' to start first</li>
-                <li>• <strong>Gameplay:</strong> Make a move, then roll dice</li>
-                <li>• <strong>Roll '1':</strong> Continue your turn!</li>
-                <li>• <strong>Roll 2-6:</strong> Turn passes to opponent</li>
-                <li>• <strong>Controls:</strong> Click piece, then click destination</li>
-            </ul>
-        </div>
+<!-- UI Layer -->
+<div class="ui-layer">
+
+  <!-- LEFT: Status Panel -->
+  <div class="panel">
+    <div class="panel-title">Game Status</div>
+
+    <div id="phase-badge" class="phase-badge">Setup</div>
+
+    <!-- White player -->
+    <div class="player-badge" id="badge-white">
+      <div class="player-dot white"></div>
+      <div class="player-info">
+        <div class="player-name">White</div>
+        <div class="player-roll">Last roll: <span id="roll-white">—</span></div>
+      </div>
     </div>
 
-    <script>
-        // ==================== CHESS ENGINE ====================
-        class ChessEngine {
-            constructor() {
-                this.reset();
-            }
+    <!-- Black player -->
+    <div class="player-badge" id="badge-black">
+      <div class="player-dot black"></div>
+      <div class="player-info">
+        <div class="player-name">Black</div>
+        <div class="player-roll">Last roll: <span id="roll-black">—</span></div>
+      </div>
+    </div>
 
-            reset() {
-                // Board representation: 0 = empty, positive = white, negative = black
-                // 1=Pawn, 2=Knight, 3=Bishop, 4=Rook, 5=Queen, 6=King
-                this.board = [
-                    [-4, -2, -3, -5, -6, -3, -2, -4],
-                    [-1, -1, -1, -1, -1, -1, -1, -1],
-                    [0, 0, 0, 0, 0, 0, 0, 0],
-                    [0, 0, 0, 0, 0, 0, 0, 0],
-                    [0, 0, 0, 0, 0, 0, 0, 0],
-                    [0, 0, 0, 0, 0, 0, 0, 0],
-                    [1, 1, 1, 1, 1, 1, 1, 1],
-                    [4, 2, 3, 5, 6, 3, 2, 4]
-                ];
-                this.currentPlayer = 'white'; // 'white' or 'black'
-                this.moveHistory = [];
-                this.whiteKingPos = [7, 4];
-                this.blackKingPos = [0, 4];
-            }
+    <!-- Game status -->
+    <div class="status-box">
+      <div class="status-label">Status</div>
+      <div class="status-value info" id="status-text">Roll to determine first player</div>
+    </div>
 
-            isValidPosition(row, col) {
-                return row >= 0 && row < 8 && col >= 0 && col < 8;
-            }
+    <!-- Move log -->
+    <div>
+      <div class="status-label" style="margin-bottom:6px;">Move History</div>
+      <div class="move-log" id="move-log"></div>
+    </div>
 
-            getPieceAt(row, col) {
-                if (!this.isValidPosition(row, col)) return 0;
-                return this.board[row][col];
-            }
+    <div class="user-id-line">Player: <span id="user-id-display">—</span></div>
+  </div>
 
-            isWhitePiece(piece) {
-                return piece > 0;
-            }
+  <!-- CENTER: Top bar -->
+  <div class="panel-center">
+    <div class="top-bar" id="top-bar">
+      <span class="top-bar-player" id="top-player">⚙️ Setup Phase</span>
+      <div class="top-bar-divider"></div>
+      <span class="top-bar-status" id="top-status">Both players roll for a 1 to start</span>
+    </div>
+  </div>
 
-            isBlackPiece(piece) {
-                return piece < 0;
-            }
+  <!-- RIGHT: Dice Panel -->
+  <div class="panel">
+    <div class="panel-title">Dice Roller</div>
 
-            isPieceColor(piece, color) {
-                if (color === 'white') return this.isWhitePiece(piece);
-                return this.isBlackPiece(piece);
-            }
+    <div class="dice-display">
+      <div class="dice-face" id="dice-face">🎲</div>
+      <div class="dice-result">
+        <span class="roll-num" id="roll-num">—</span>
+        <span id="roll-label">No roll yet</span>
+      </div>
+    </div>
 
-            getValidMoves(fromRow, fromCol) {
-                const piece = this.getPieceAt(fromRow, fromCol);
-                if (piece === 0) return [];
-                
-                const pieceColor = this.isWhitePiece(piece) ? 'white' : 'black';
-                if (pieceColor !== this.currentPlayer) return [];
+    <button class="btn btn-primary" id="btn-roll">🎲 Roll Dice</button>
+    <button class="btn btn-danger" id="btn-reset">↺ Reset Game</button>
 
-                const moves = [];
-                const pieceType = Math.abs(piece);
+    <div style="margin-top:4px;">
+      <div class="status-label" style="margin-bottom:8px;">How to Play</div>
+      <div class="instruction-grid">
+        <div class="instruction-item">
+          <span class="icon">🎯</span>
+          <div><strong>Setup:</strong> Both roll — first to get a <strong>1</strong> goes first</div>
+        </div>
+        <div class="instruction-item">
+          <span class="icon">♟️</span>
+          <div><strong>Click</strong> a piece to select it, then click a highlighted square to move</div>
+        </div>
+        <div class="instruction-item">
+          <span class="icon">🎲</span>
+          <div><strong>After each move</strong>, roll the dice</div>
+        </div>
+        <div class="instruction-item">
+          <span class="icon">✅</span>
+          <div><strong>Roll 1:</strong> Take another turn!</div>
+        </div>
+        <div class="instruction-item">
+          <span class="icon">❌</span>
+          <div><strong>Roll 2–6:</strong> Turn passes to opponent</div>
+        </div>
+        <div class="instruction-item">
+          <span class="icon">🖱️</span>
+          <div><strong>Drag</strong> the board to rotate, scroll to zoom</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-                switch(pieceType) {
-                    case 1: // Pawn
-                        moves.push(...this.getPawnMoves(fromRow, fromCol, pieceColor));
-                        break;
-                    case 2: // Knight
-                        moves.push(...this.getKnightMoves(fromRow, fromCol, pieceColor));
-                        break;
-                    case 3: // Bishop
-                        moves.push(...this.getBishopMoves(fromRow, fromCol, pieceColor));
-                        break;
-                    case 4: // Rook
-                        moves.push(...this.getRookMoves(fromRow, fromCol, pieceColor));
-                        break;
-                    case 5: // Queen
-                        moves.push(...this.getQueenMoves(fromRow, fromCol, pieceColor));
-                        break;
-                    case 6: // King
-                        moves.push(...this.getKingMoves(fromRow, fromCol, pieceColor));
-                        break;
-                }
+</div>
 
-                // Filter out moves that would put own king in check
-                return moves.filter(move => {
-                    return !this.wouldBeInCheck(fromRow, fromCol, move[0], move[1], pieceColor);
-                });
-            }
+<!-- Game Over Overlay -->
+<div id="game-over-overlay">
+  <div class="game-over-box">
+    <div class="trophy" id="go-trophy">🏆</div>
+    <h2 id="go-winner">White Wins!</h2>
+    <p id="go-reason">Checkmate</p>
+    <button class="btn btn-success" id="btn-go-reset">Play Again</button>
+  </div>
+</div>
 
-            getPawnMoves(row, col, color) {
-                const moves = [];
-                const direction = color === 'white' ? -1 : 1;
-                const startRow = color === 'white' ? 6 : 1;
-                const promotionRow = color === 'white' ? 0 : 7;
+<script>
+/* ============================================================
+   CHESS ENGINE
+   ============================================================ */
+const EMPTY = 0;
+const WHITE = 1, BLACK = -1;
+const PAWN = 1, KNIGHT = 2, BISHOP = 3, ROOK = 4, QUEEN = 5, KING = 6;
 
-                // Move forward one square (only if empty)
-                const forwardRow = row + direction;
-                if (this.isValidPosition(forwardRow, col) && this.getPieceAt(forwardRow, col) === 0) {
-                    moves.push([forwardRow, col]);
-                    
-                    // Double move from starting position (only if both squares are empty)
-                    if (row === startRow && this.getPieceAt(row + 2 * direction, col) === 0) {
-                        moves.push([row + 2 * direction, col]);
-                    }
-                }
+class ChessEngine {
+  constructor() { this.reset(); }
 
-                // Capture diagonally (only if there's an enemy piece)
-                for (const dcol of [-1, 1]) {
-                    const newRow = row + direction;
-                    const newCol = col + dcol;
-                    if (this.isValidPosition(newRow, newCol)) {
-                        const target = this.getPieceAt(newRow, newCol);
-                        if (target !== 0 && !this.isPieceColor(target, color)) {
-                            moves.push([newRow, newCol]);
-                        }
-                    }
-                }
+  reset() {
+    this.turn = WHITE; // 1 = white, -1 = black
+    this.halfmove = 0;
+    this.enPassantSq = null; // [row,col] or null
+    this.castlingRights = { wK: true, wQ: true, bK: true, bQ: true };
+    this.board = this._initialBoard();
+    this._updateKingPos();
+    this.moveHistory = [];
+  }
 
-                return moves;
-            }
+  _initialBoard() {
+    const b = Array.from({length:8}, () => Array(8).fill(0));
+    const backRank = [ROOK,KNIGHT,BISHOP,QUEEN,KING,BISHOP,KNIGHT,ROOK];
+    for (let c = 0; c < 8; c++) {
+      b[0][c] = -backRank[c]; // black
+      b[1][c] = -PAWN;
+      b[6][c] =  PAWN;  // white
+      b[7][c] =  backRank[c];
+    }
+    return b;
+  }
 
-            getKnightMoves(row, col, color) {
-                const moves = [];
-                const offsets = [[2,1], [2,-1], [-2,1], [-2,-1], [1,2], [1,-2], [-1,2], [-1,-2]];
-                
-                for (const [dr, dc] of offsets) {
-                    const newRow = row + dr;
-                    const newCol = col + dc;
-                    if (this.isValidPosition(newRow, newCol)) {
-                        const target = this.getPieceAt(newRow, newCol);
-                        if (target === 0 || !this.isPieceColor(target, color)) {
-                            moves.push([newRow, newCol]);
-                        }
-                    }
-                }
-                return moves;
-            }
+  _updateKingPos() {
+    this.wKing = null; this.bKing = null;
+    for (let r = 0; r < 8; r++)
+      for (let c = 0; c < 8; c++) {
+        if (this.board[r][c] ===  KING) this.wKing = [r,c];
+        if (this.board[r][c] === -KING) this.bKing = [r,c];
+      }
+  }
 
-            getBishopMoves(row, col, color) {
-                return this.getLinearMoves(row, col, color, [[1,1], [1,-1], [-1,1], [-1,-1]]);
-            }
+  inBounds(r, c) { return r >= 0 && r < 8 && c >= 0 && c < 8; }
+  at(r, c)       { return this.inBounds(r,c) ? this.board[r][c] : 0; }
+  color(piece)   { return piece > 0 ? WHITE : piece < 0 ? BLACK : 0; }
+  pieceType(p)   { return Math.abs(p); }
 
-            getRookMoves(row, col, color) {
-                return this.getLinearMoves(row, col, color, [[1,0], [-1,0], [0,1], [0,-1]]);
-            }
+  // Generate pseudo-legal moves for a square (no check filter)
+  _pseudoMoves(r, c) {
+    const piece = this.at(r,c);
+    if (!piece) return [];
+    const col = this.color(piece);
+    const type = this.pieceType(piece);
+    const moves = [];
 
-            getQueenMoves(row, col, color) {
-                return this.getLinearMoves(row, col, color, [[1,1], [1,-1], [-1,1], [-1,-1], [1,0], [-1,0], [0,1], [0,-1]]);
-            }
+    const push = (tr, tc, extra) => {
+      if (!this.inBounds(tr,tc)) return;
+      if (this.color(this.at(tr,tc)) === col) return; // friendly
+      moves.push({ from:[r,c], to:[tr,tc], ...(extra||{}) });
+    };
 
-            getKingMoves(row, col, color) {
-                const moves = [];
-                for (let dr = -1; dr <= 1; dr++) {
-                    for (let dc = -1; dc <= 1; dc++) {
-                        if (dr === 0 && dc === 0) continue;
-                        const newRow = row + dr;
-                        const newCol = col + dc;
-                        if (this.isValidPosition(newRow, newCol)) {
-                            const target = this.getPieceAt(newRow, newCol);
-                            if (target === 0 || !this.isPieceColor(target, color)) {
-                                moves.push([newRow, newCol]);
-                            }
-                        }
-                    }
-                }
-                return moves;
-            }
-
-            getLinearMoves(row, col, color, directions) {
-                const moves = [];
-                for (const [dr, dc] of directions) {
-                    let r = row + dr;
-                    let c = col + dc;
-                    while (this.isValidPosition(r, c)) {
-                        const target = this.getPieceAt(r, c);
-                        if (target === 0) {
-                            moves.push([r, c]);
-                        } else {
-                            if (!this.isPieceColor(target, color)) {
-                                moves.push([r, c]);
-                            }
-                            break;
-                        }
-                        r += dr;
-                        c += dc;
-                    }
-                }
-                return moves;
-            }
-
-            wouldBeInCheck(fromRow, fromCol, toRow, toCol, color) {
-                // Simulate the move
-                const piece = this.board[fromRow][fromCol];
-                const captured = this.board[toRow][toCol];
-                this.board[fromRow][fromCol] = 0;
-                this.board[toRow][toCol] = piece;
-
-                // Update king position if moving king
-                let kingPos = color === 'white' ? [...this.whiteKingPos] : [...this.blackKingPos];
-                if (Math.abs(piece) === 6) {
-                    kingPos = [toRow, toCol];
-                }
-
-                const inCheck = this.isPositionUnderAttack(kingPos[0], kingPos[1], color);
-
-                // Undo the move
-                this.board[fromRow][fromCol] = piece;
-                this.board[toRow][toCol] = captured;
-
-                return inCheck;
-            }
-
-            isPositionUnderAttack(row, col, defendingColor) {
-                const attackingColor = defendingColor === 'white' ? 'black' : 'white';
-                
-                // Check all opponent pieces
-                for (let r = 0; r < 8; r++) {
-                    for (let c = 0; c < 8; c++) {
-                        const piece = this.getPieceAt(r, c);
-                        if (piece !== 0 && this.isPieceColor(piece, attackingColor)) {
-                            // Temporarily switch player to get attacker's moves
-                            const originalPlayer = this.currentPlayer;
-                            this.currentPlayer = attackingColor;
-                            const moves = this.getValidMovesWithoutCheckValidation(r, c);
-                            this.currentPlayer = originalPlayer;
-                            
-                            if (moves.some(move => move[0] === row && move[1] === col)) {
-                                return true;
-                            }
-                        }
-                    }
-                }
-                return false;
-            }
-
-            getValidMovesWithoutCheckValidation(fromRow, fromCol) {
-                const piece = this.getPieceAt(fromRow, fromCol);
-                if (piece === 0) return [];
-                
-                const pieceType = Math.abs(piece);
-                const pieceColor = this.isWhitePiece(piece) ? 'white' : 'black';
-
-                switch(pieceType) {
-                    case 1: return this.getPawnMoves(fromRow, fromCol, pieceColor);
-                    case 2: return this.getKnightMoves(fromRow, fromCol, pieceColor);
-                    case 3: return this.getBishopMoves(fromRow, fromCol, pieceColor);
-                    case 4: return this.getRookMoves(fromRow, fromCol, pieceColor);
-                    case 5: return this.getQueenMoves(fromRow, fromCol, pieceColor);
-                    case 6: return this.getKingMoves(fromRow, fromCol, pieceColor);
-                }
-                return [];
-            }
-
-            makeMove(fromRow, fromCol, toRow, toCol) {
-                const piece = this.getPieceAt(fromRow, fromCol);
-                if (piece === 0) return false;
-
-                const validMoves = this.getValidMoves(fromRow, fromCol);
-                const isValid = validMoves.some(move => move[0] === toRow && move[1] === toCol);
-                
-                if (!isValid) return false;
-
-                // Make the move
-                let finalPiece = piece;
-                
-                // Handle pawn promotion
-                if (Math.abs(piece) === 1) {
-                    const promotionRow = piece > 0 ? 0 : 7;
-                    if (toRow === promotionRow) {
-                        // Auto-promote to queen
-                        finalPiece = piece > 0 ? 5 : -5;
-                    }
-                }
-                
-                this.board[toRow][toCol] = finalPiece;
-                this.board[fromRow][fromCol] = 0;
-
-                // Update king position
-                if (Math.abs(piece) === 6) {
-                    if (this.isWhitePiece(piece)) {
-                        this.whiteKingPos = [toRow, toCol];
-                    } else {
-                        this.blackKingPos = [toRow, toCol];
-                    }
-                }
-
-                this.moveHistory.push({ fromRow, fromCol, toRow, toCol, piece, finalPiece });
-                return true;
-            }
-
-            isInCheck(color) {
-                const kingPos = color === 'white' ? this.whiteKingPos : this.blackKingPos;
-                return this.isPositionUnderAttack(kingPos[0], kingPos[1], color);
-            }
-
-            isCheckmate(color) {
-                if (!this.isInCheck(color)) return false;
-
-                // Check if any move can get out of check
-                for (let r = 0; r < 8; r++) {
-                    for (let c = 0; c < 8; c++) {
-                        const piece = this.getPieceAt(r, c);
-                        if (piece !== 0 && this.isPieceColor(piece, color)) {
-                            const moves = this.getValidMoves(r, c);
-                            if (moves.length > 0) return false;
-                        }
-                    }
-                }
-                return true;
-            }
-
-            switchPlayer() {
-                this.currentPlayer = this.currentPlayer === 'white' ? 'black' : 'white';
-            }
+    const slide = (dirs) => {
+      for (const [dr,dc] of dirs) {
+        let tr = r+dr, tc = c+dc;
+        while (this.inBounds(tr,tc)) {
+          if (this.at(tr,tc)) {
+            push(tr,tc); break;
+          }
+          push(tr,tc);
+          tr += dr; tc += dc;
         }
+      }
+    };
 
-        // ==================== GAME STATE MANAGER ====================
-        class GameStateManager {
-            constructor() {
-                this.gameId = 'game_' + Date.now();
-                this.userId = 'player_' + Math.random().toString(36).substr(2, 9);
-                this.phase = 'setup'; // 'setup', 'playing', 'ended'
-                this.whiteRoll = null;
-                this.blackRoll = null;
-                this.lastDiceRoll = null;
-                this.waitingForRoll = false;
-                this.engine = new ChessEngine();
-                
-                document.getElementById('user-id').textContent = this.userId;
-            }
-
-            async syncToFirestore() {
-                try {
-                    const gameRef = window.firestoreDoc(window.firestoreDB, 'dice_chess_games', this.gameId);
-                    await window.firestoreSetDoc(gameRef, {
-                        phase: this.phase,
-                        currentPlayer: this.engine.currentPlayer,
-                        board: this.engine.board,
-                        whiteRoll: this.whiteRoll,
-                        blackRoll: this.blackRoll,
-                        lastDiceRoll: this.lastDiceRoll,
-                        waitingForRoll: this.waitingForRoll,
-                        updatedAt: Date.now()
-                    }, { merge: true });
-                } catch (error) {
-                    console.log('Firestore sync skipped (demo mode):', error.message);
-                }
-            }
-
-            rollDice() {
-                return Math.floor(Math.random() * 6) + 1;
-            }
-
-            handleSetupRoll(player) {
-                const roll = this.rollDice();
-                this.lastDiceRoll = roll;
-                
-                if (player === 'white') {
-                    this.whiteRoll = roll;
-                    document.getElementById('white-roll').textContent = roll;
-                } else {
-                    this.blackRoll = roll;
-                    document.getElementById('black-roll').textContent = roll;
-                }
-
-                this.animateDice(roll);
-
-                // Check if both players have rolled
-                if (this.whiteRoll !== null && this.blackRoll !== null) {
-                    // Exactly one player must roll a 1 to start
-                    const whiteGot1 = this.whiteRoll === 1;
-                    const blackGot1 = this.blackRoll === 1;
-                    
-                    if (whiteGot1 && !blackGot1) {
-                        this.startGame('white');
-                    } else if (blackGot1 && !whiteGot1) {
-                        this.startGame('black');
-                    } else {
-                        // Both rolled 1, or neither rolled 1, or same number - reset for re-roll
-                        const message = (whiteGot1 && blackGot1) ? 'Both rolled 1! Re-roll.' :
-                                      (this.whiteRoll === this.blackRoll) ? 'Same roll! Re-roll.' :
-                                      'No one rolled 1! Re-roll.';
-                        document.getElementById('game-status').textContent = message;
-                        
-                        setTimeout(() => {
-                            this.whiteRoll = null;
-                            this.blackRoll = null;
-                            document.getElementById('white-roll').textContent = '-';
-                            document.getElementById('black-roll').textContent = '-';
-                            this.updateUI();
-                        }, 2000);
-                    }
-                }
-
-                this.updateUI();
-                this.syncToFirestore();
-            }
-
-            startGame(firstPlayer) {
-                this.phase = 'playing';
-                this.engine.currentPlayer = firstPlayer;
-                this.waitingForRoll = false;
-                document.getElementById('game-status').textContent = 'Game Started!';
-                setTimeout(() => this.updateUI(), 1000);
-                this.syncToFirestore();
-            }
-
-            handlePlayRoll() {
-                const roll = this.rollDice();
-                this.lastDiceRoll = roll;
-                this.animateDice(roll);
-
-                if (this.engine.currentPlayer === 'white') {
-                    this.whiteRoll = roll;
-                    document.getElementById('white-roll').textContent = roll;
-                } else {
-                    this.blackRoll = roll;
-                    document.getElementById('black-roll').textContent = roll;
-                }
-
-                if (roll === 1) {
-                    // Continue turn
-                    this.waitingForRoll = false;
-                    document.getElementById('game-status').textContent = `Rolled ${roll}! Continue your turn!`;
-                } else {
-                    // Switch player
-                    this.engine.switchPlayer();
-                    this.waitingForRoll = false;
-                    document.getElementById('game-status').textContent = `Rolled ${roll}. Turn passed.`;
-                }
-
-                setTimeout(() => this.updateUI(), 1500);
-                this.syncToFirestore();
-            }
-
-            makeMove(fromRow, fromCol, toRow, toCol) {
-                if (this.phase !== 'playing' || this.waitingForRoll) return false;
-
-                const success = this.engine.makeMove(fromRow, fromCol, toRow, toCol);
-                if (success) {
-                    // Check for checkmate
-                    const opponent = this.engine.currentPlayer === 'white' ? 'black' : 'white';
-                    if (this.engine.isCheckmate(opponent)) {
-                        this.phase = 'ended';
-                        document.getElementById('game-status').textContent = `Checkmate! ${this.engine.currentPlayer.toUpperCase()} wins!`;
-                        this.updateUI();
-                        return true;
-                    }
-
-                    // Check for check
-                    if (this.engine.isInCheck(opponent)) {
-                        document.getElementById('game-status').textContent = `${opponent.toUpperCase()} is in check! Roll dice...`;
-                    } else {
-                        document.getElementById('game-status').textContent = 'Move made! Roll dice...';
-                    }
-
-                    this.waitingForRoll = true;
-                    this.updateUI();
-                    this.syncToFirestore();
-                }
-                return success;
-            }
-
-            animateDice(value) {
-                const diceDisplay = document.getElementById('dice-display');
-                const lastValue = document.getElementById('last-dice-value');
-                
-                let count = 0;
-                const interval = setInterval(() => {
-                    diceDisplay.textContent = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'][Math.floor(Math.random() * 6)];
-                    count++;
-                    if (count > 10) {
-                        clearInterval(interval);
-                        diceDisplay.textContent = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'][value - 1];
-                        lastValue.textContent = value;
-                    }
-                }, 100);
-            }
-
-            updateUI() {
-                const rollBtn = document.getElementById('roll-dice-btn');
-                const currentPlayerEl = document.getElementById('current-player');
-                const gameStatusEl = document.getElementById('game-status');
-
-                if (this.phase === 'setup') {
-                    rollBtn.disabled = false;
-                    rollBtn.textContent = 'Roll to Start';
-                    currentPlayerEl.textContent = 'Setup Phase';
-                    if (this.whiteRoll === null && this.blackRoll === null) {
-                        gameStatusEl.textContent = 'Both players roll for 1 to start';
-                    } else if (this.whiteRoll !== null && this.blackRoll === null) {
-                        gameStatusEl.textContent = 'Black player: roll for 1';
-                    } else if (this.whiteRoll === null && this.blackRoll !== null) {
-                        gameStatusEl.textContent = 'White player: roll for 1';
-                    } else {
-                        gameStatusEl.textContent = 'Re-roll! Need exactly one player with 1';
-                    }
-                } else if (this.phase === 'playing') {
-                    currentPlayerEl.textContent = `${this.engine.currentPlayer.charAt(0).toUpperCase() + this.engine.currentPlayer.slice(1)}'s Turn`;
-                    rollBtn.disabled = !this.waitingForRoll;
-                    rollBtn.textContent = this.waitingForRoll ? 'Roll Dice' : 'Make a Move First';
-                    
-                    if (!this.waitingForRoll && !gameStatusEl.textContent.includes('Checkmate')) {
-                        const inCheck = this.engine.isInCheck(this.engine.currentPlayer);
-                        gameStatusEl.textContent = inCheck ? 
-                            `${this.engine.currentPlayer.toUpperCase()} is in check! Make a move.` : 
-                            'Make your move';
-                    }
-                } else if (this.phase === 'ended') {
-                    rollBtn.disabled = true;
-                    rollBtn.textContent = 'Game Over';
-                }
-            }
-
-            reset() {
-                this.phase = 'setup';
-                this.whiteRoll = null;
-                this.blackRoll = null;
-                this.lastDiceRoll = null;
-                this.waitingForRoll = false;
-                this.engine.reset();
-                document.getElementById('white-roll').textContent = '-';
-                document.getElementById('black-roll').textContent = '-';
-                document.getElementById('last-dice-value').textContent = '-';
-                document.getElementById('dice-display').textContent = '🎲';
-                this.updateUI();
-                this.syncToFirestore();
-            }
+    switch (type) {
+      case PAWN: {
+        const dir = col; // WHITE=1 goes up (-1 in row terms)
+        const step = -col; // row direction: white moves from row 6 upward (decreasing row)
+        const startRow = col === WHITE ? 6 : 1;
+        const promoRow = col === WHITE ? 0 : 7;
+        // Forward
+        if (this.inBounds(r+step,c) && !this.at(r+step,c)) {
+          const isProm = (r+step === promoRow);
+          if (isProm) {
+            for (const p of [QUEEN,ROOK,BISHOP,KNIGHT])
+              moves.push({ from:[r,c], to:[r+step,c], promo: p * col });
+          } else {
+            moves.push({ from:[r,c], to:[r+step,c] });
+            // Double push
+            if (r === startRow && !this.at(r+2*step,c))
+              moves.push({ from:[r,c], to:[r+2*step,c], dblPush: true });
+          }
         }
-
-        // ==================== 3D RENDERER ====================
-        class ChessRenderer {
-            constructor(gameState) {
-                this.gameState = gameState;
-                this.webGLAvailable = this.checkWebGLSupport();
-                
-                if (!this.webGLAvailable) {
-                    this.showWebGLError();
-                    return;
-                }
-                
-                try {
-                    this.scene = new THREE.Scene();
-                    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-                    this.renderer = new THREE.WebGLRenderer({ antialias: true });
-                    this.renderer.setSize(window.innerWidth, window.innerHeight);
-                    this.renderer.shadowMap.enabled = true;
-                    document.getElementById('canvas-container').appendChild(this.renderer.domElement);
-
-                    this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
-                    this.camera.position.set(0, 12, 12);
-                    this.controls.target.set(0, 0, 0);
-                    this.controls.update();
-
-                    this.raycaster = new THREE.Raycaster();
-                    this.mouse = new THREE.Vector2();
-                    this.selectedPiece = null;
-                    this.highlightedSquares = [];
-                    this.pieces3D = [];
-
-                    this.setupScene();
-                    this.createBoard();
-                    this.createPieces();
-                    this.setupEventListeners();
-                    this.animate();
-                } catch (error) {
-                    console.warn('3D renderer initialization failed:', error.message);
-                    this.showWebGLError();
-                }
+        // Captures
+        for (const dc of [-1,1]) {
+          const tr = r+step, tc = c+dc;
+          if (!this.inBounds(tr,tc)) continue;
+          const target = this.at(tr,tc);
+          const epHit = this.enPassantSq && this.enPassantSq[0]===tr && this.enPassantSq[1]===tc;
+          if ((target && this.color(target) !== col) || epHit) {
+            const isProm = (tr === promoRow);
+            if (isProm) {
+              for (const p of [QUEEN,ROOK,BISHOP,KNIGHT])
+                moves.push({ from:[r,c], to:[tr,tc], promo: p * col, capture: target });
+            } else {
+              moves.push({ from:[r,c], to:[tr,tc], enPassant: epHit, capture: target || (epHit ? -col*PAWN : 0) });
             }
-            
-            checkWebGLSupport() {
-                try {
-                    const canvas = document.createElement('canvas');
-                    return !!(window.WebGLRenderingContext && 
-                            (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
-                } catch(e) {
-                    return false;
-                }
-            }
-            
-            showWebGLError() {
-                const container = document.getElementById('canvas-container');
-                container.innerHTML = `
-                    <div class="flex items-center justify-center h-full">
-                        <div class="bg-yellow-900/80 backdrop-blur-sm text-white rounded-lg p-8 max-w-2xl mx-4">
-                            <h2 class="text-2xl font-bold mb-4">WebGL Not Available</h2>
-                            <p class="mb-4">The 3D chess board requires WebGL support, which is not available in your current environment.</p>
-                            <p class="text-sm text-gray-300">The game logic is fully functional - you can still use the dice controls and the game will track moves in the background. To see the 3D visualization, please open this page in a browser with WebGL support.</p>
-                        </div>
-                    </div>
-                `;
-            }
-
-            setupScene() {
-                this.scene.background = new THREE.Color(0x1a1a2e);
-                
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-                this.scene.add(ambientLight);
-
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight.position.set(10, 20, 10);
-                directionalLight.castShadow = true;
-                this.scene.add(directionalLight);
-
-                const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
-                directionalLight2.position.set(-10, 10, -10);
-                this.scene.add(directionalLight2);
-            }
-
-            createBoard() {
-                const squareSize = 1;
-                const boardGroup = new THREE.Group();
-
-                // Create checkerboard
-                for (let row = 0; row < 8; row++) {
-                    for (let col = 0; col < 8; col++) {
-                        const isLight = (row + col) % 2 === 0;
-                        const geometry = new THREE.BoxGeometry(squareSize, 0.2, squareSize);
-                        const material = new THREE.MeshStandardMaterial({
-                            color: isLight ? 0xeeeed2 : 0x769656,
-                        });
-                        const square = new THREE.Mesh(geometry, material);
-                        square.position.set(
-                            col - 3.5,
-                            -0.1,
-                            row - 3.5
-                        );
-                        square.receiveShadow = true;
-                        square.userData = { row, col, type: 'square' };
-                        boardGroup.add(square);
-                    }
-                }
-
-                // Add coordinate labels
-                const labels = 'ABCDEFGH';
-                
-                // Add simple text sprites for labels
-                for (let i = 0; i < 8; i++) {
-                    // Column labels (A-H)
-                    this.createTextLabel(labels[i], i - 3.5, -0.1, -4.5, boardGroup);
-                    // Row labels (1-8)
-                    this.createTextLabel((8-i).toString(), -4.5, -0.1, i - 3.5, boardGroup);
-                }
-
-                this.scene.add(boardGroup);
-            }
-
-            createTextLabel(text, x, y, z, parent) {
-                const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
-                canvas.width = 128;
-                canvas.height = 128;
-                context.fillStyle = '#ffffff';
-                context.font = 'bold 80px Arial';
-                context.textAlign = 'center';
-                context.textBaseline = 'middle';
-                context.fillText(text, 64, 64);
-
-                const texture = new THREE.CanvasTexture(canvas);
-                const material = new THREE.SpriteMaterial({ map: texture });
-                const sprite = new THREE.Sprite(material);
-                sprite.position.set(x, y + 0.5, z);
-                sprite.scale.set(0.5, 0.5, 1);
-                parent.add(sprite);
-            }
-
-            createPieceGeometry(type) {
-                switch(type) {
-                    case 1: // Pawn
-                        return new THREE.CylinderGeometry(0.2, 0.3, 0.6, 16);
-                    case 2: // Knight
-                        const knightGroup = new THREE.Group();
-                        const base = new THREE.CylinderGeometry(0.3, 0.35, 0.3, 16);
-                        const body = new THREE.BoxGeometry(0.4, 0.5, 0.3);
-                        const baseMesh = new THREE.Mesh(base);
-                        const bodyMesh = new THREE.Mesh(body);
-                        bodyMesh.position.y = 0.4;
-                        knightGroup.add(baseMesh);
-                        knightGroup.add(bodyMesh);
-                        return knightGroup;
-                    case 3: // Bishop
-                        const bishopGroup = new THREE.Group();
-                        const bishopBase = new THREE.CylinderGeometry(0.3, 0.35, 0.3, 16);
-                        const bishopBody = new THREE.CylinderGeometry(0.2, 0.3, 0.5, 16);
-                        const bishopTop = new THREE.SphereGeometry(0.15, 16, 16);
-                        const bBase = new THREE.Mesh(bishopBase);
-                        const bBody = new THREE.Mesh(bishopBody);
-                        const bTop = new THREE.Mesh(bishopTop);
-                        bBody.position.y = 0.4;
-                        bTop.position.y = 0.75;
-                        bishopGroup.add(bBase);
-                        bishopGroup.add(bBody);
-                        bishopGroup.add(bTop);
-                        return bishopGroup;
-                    case 4: // Rook
-                        const rookGroup = new THREE.Group();
-                        const rookBase = new THREE.CylinderGeometry(0.35, 0.4, 0.3, 4);
-                        const rookBody = new THREE.CylinderGeometry(0.3, 0.35, 0.6, 4);
-                        const rBase = new THREE.Mesh(rookBase);
-                        const rBody = new THREE.Mesh(rookBody);
-                        rBody.position.y = 0.45;
-                        rookGroup.add(rBase);
-                        rookGroup.add(rBody);
-                        return rookGroup;
-                    case 5: // Queen
-                        const queenGroup = new THREE.Group();
-                        const queenBase = new THREE.CylinderGeometry(0.35, 0.4, 0.3, 16);
-                        const queenBody = new THREE.CylinderGeometry(0.25, 0.35, 0.6, 16);
-                        const queenCrown = new THREE.ConeGeometry(0.25, 0.3, 8);
-                        const qBase = new THREE.Mesh(queenBase);
-                        const qBody = new THREE.Mesh(queenBody);
-                        const qCrown = new THREE.Mesh(queenCrown);
-                        qBody.position.y = 0.45;
-                        qCrown.position.y = 0.9;
-                        queenGroup.add(qBase);
-                        queenGroup.add(qBody);
-                        queenGroup.add(qCrown);
-                        return queenGroup;
-                    case 6: // King
-                        const kingGroup = new THREE.Group();
-                        const kingBase = new THREE.CylinderGeometry(0.35, 0.4, 0.3, 16);
-                        const kingBody = new THREE.CylinderGeometry(0.25, 0.35, 0.6, 16);
-                        const kingCross = new THREE.BoxGeometry(0.4, 0.1, 0.1);
-                        const kingCross2 = new THREE.BoxGeometry(0.1, 0.4, 0.1);
-                        const kBase = new THREE.Mesh(kingBase);
-                        const kBody = new THREE.Mesh(kingBody);
-                        const kCross1 = new THREE.Mesh(kingCross);
-                        const kCross2 = new THREE.Mesh(kingCross2);
-                        kBody.position.y = 0.45;
-                        kCross1.position.y = 0.9;
-                        kCross2.position.y = 0.9;
-                        kingGroup.add(kBase);
-                        kingGroup.add(kBody);
-                        kingGroup.add(kCross1);
-                        kingGroup.add(kCross2);
-                        return kingGroup;
-                }
-            }
-
-            createPieces() {
-                // Clear existing pieces
-                this.pieces3D.forEach(piece => this.scene.remove(piece));
-                this.pieces3D = [];
-
-                for (let row = 0; row < 8; row++) {
-                    for (let col = 0; col < 8; col++) {
-                        const piece = this.gameState.engine.getPieceAt(row, col);
-                        if (piece !== 0) {
-                            const pieceType = Math.abs(piece);
-                            const isWhite = piece > 0;
-                            
-                            const geometry = this.createPieceGeometry(pieceType);
-                            const material = new THREE.MeshStandardMaterial({
-                                color: isWhite ? 0xf0f0f0 : 0x202020,
-                                metalness: 0.3,
-                                roughness: 0.7
-                            });
-
-                            let mesh;
-                            if (geometry.isGroup) {
-                                mesh = geometry;
-                                mesh.children.forEach(child => {
-                                    child.material = material.clone();
-                                    child.castShadow = true;
-                                });
-                            } else {
-                                mesh = new THREE.Mesh(geometry, material);
-                                mesh.castShadow = true;
-                            }
-
-                            mesh.position.set(col - 3.5, 0.3, row - 3.5);
-                            mesh.userData = { row, col, piece, type: 'piece' };
-                            this.pieces3D.push(mesh);
-                            this.scene.add(mesh);
-                        }
-                    }
-                }
-            }
-
-            clearHighlights() {
-                this.highlightedSquares.forEach(square => this.scene.remove(square));
-                this.highlightedSquares = [];
-            }
-
-            highlightSquares(squares) {
-                this.clearHighlights();
-                squares.forEach(([row, col]) => {
-                    const geometry = new THREE.RingGeometry(0.35, 0.45, 32);
-                    const material = new THREE.MeshBasicMaterial({ 
-                        color: 0x00ff00, 
-                        side: THREE.DoubleSide,
-                        transparent: true,
-                        opacity: 0.6
-                    });
-                    const ring = new THREE.Mesh(geometry, material);
-                    ring.rotation.x = -Math.PI / 2;
-                    ring.position.set(col - 3.5, 0.11, row - 3.5);
-                    this.highlightedSquares.push(ring);
-                    this.scene.add(ring);
-                });
-            }
-
-            setupEventListeners() {
-                window.addEventListener('resize', () => {
-                    this.camera.aspect = window.innerWidth / window.innerHeight;
-                    this.camera.updateProjectionMatrix();
-                    this.renderer.setSize(window.innerWidth, window.innerHeight);
-                });
-
-                this.renderer.domElement.addEventListener('click', (event) => {
-                    this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-                    this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-                    this.raycaster.setFromCamera(this.mouse, this.camera);
-                    const intersects = this.raycaster.intersectObjects(this.scene.children, true);
-
-                    if (intersects.length > 0) {
-                        let target = intersects[0].object;
-                        while (target.parent && !target.userData.type) {
-                            target = target.parent;
-                        }
-
-                        if (target.userData.type === 'piece') {
-                            this.selectPiece(target);
-                        } else if (target.userData.type === 'square' && this.selectedPiece) {
-                            this.movePiece(target.userData.row, target.userData.col);
-                        }
-                    }
-                });
-            }
-
-            selectPiece(pieceMesh) {
-                if (this.gameState.phase !== 'playing' || this.gameState.waitingForRoll) return;
-
-                const { row, col } = pieceMesh.userData;
-                const piece = this.gameState.engine.getPieceAt(row, col);
-                const isCurrentPlayerPiece = this.gameState.engine.isPieceColor(piece, this.gameState.engine.currentPlayer);
-
-                if (!isCurrentPlayerPiece) return;
-
-                this.selectedPiece = { row, col, mesh: pieceMesh };
-                const validMoves = this.gameState.engine.getValidMoves(row, col);
-                this.highlightSquares(validMoves);
-
-                // Highlight selected piece
-                if (pieceMesh.children.length > 0) {
-                    pieceMesh.children.forEach(child => {
-                        if (child.material) {
-                            child.material.emissive = new THREE.Color(0x444444);
-                        }
-                    });
-                } else {
-                    pieceMesh.material.emissive = new THREE.Color(0x444444);
-                }
-            }
-
-            movePiece(toRow, toCol) {
-                if (!this.selectedPiece) return;
-
-                const success = this.gameState.makeMove(
-                    this.selectedPiece.row,
-                    this.selectedPiece.col,
-                    toRow,
-                    toCol
-                );
-
-                if (success) {
-                    this.createPieces();
-                }
-
-                // Clear selection
-                if (this.selectedPiece.mesh.children.length > 0) {
-                    this.selectedPiece.mesh.children.forEach(child => {
-                        if (child.material) {
-                            child.material.emissive = new THREE.Color(0x000000);
-                        }
-                    });
-                } else {
-                    this.selectedPiece.mesh.material.emissive = new THREE.Color(0x000000);
-                }
-
-                this.selectedPiece = null;
-                this.clearHighlights();
-            }
-
-            animate() {
-                requestAnimationFrame(() => this.animate());
-                this.controls.update();
-                this.renderer.render(this.scene, this.camera);
-            }
-
-            updateBoard() {
-                this.createPieces();
-            }
+          }
         }
+        break;
+      }
+      case KNIGHT: {
+        for (const [dr,dc] of [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]])
+          push(r+dr, c+dc);
+        break;
+      }
+      case BISHOP: slide([[1,1],[1,-1],[-1,1],[-1,-1]]); break;
+      case ROOK:   slide([[1,0],[-1,0],[0,1],[0,-1]]);   break;
+      case QUEEN:  slide([[1,1],[1,-1],[-1,1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]]); break;
+      case KING: {
+        for (const [dr,dc] of [[1,1],[1,-1],[-1,1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]])
+          push(r+dr, c+dc);
+        // Castling
+        const backRow = col === WHITE ? 7 : 0;
+        if (r === backRow && c === 4) {
+          // Kingside
+          if ((col===WHITE?this.castlingRights.wK:this.castlingRights.bK) &&
+              !this.at(backRow,5) && !this.at(backRow,6) &&
+              this.at(backRow,7) === col*ROOK)
+            moves.push({ from:[r,c], to:[backRow,6], castle:'K' });
+          // Queenside
+          if ((col===WHITE?this.castlingRights.wQ:this.castlingRights.bQ) &&
+              !this.at(backRow,3) && !this.at(backRow,2) && !this.at(backRow,1) &&
+              this.at(backRow,0) === col*ROOK)
+            moves.push({ from:[r,c], to:[backRow,2], castle:'Q' });
+        }
+        break;
+      }
+    }
+    return moves;
+  }
 
-        // ==================== INITIALIZATION ====================
-        window.addEventListener('DOMContentLoaded', () => {
-            const gameState = new GameStateManager();
-            const renderer = new ChessRenderer(gameState);
+  // Apply a move on the board (returns undo info)
+  _applyMove(move) {
+    const [fr,fc] = move.from;
+    const [tr,tc] = move.to;
+    const piece = this.board[fr][fc];
+    const captured = this.board[tr][tc];
+    const oldEP = this.enPassantSq;
+    const oldCR = { ...this.castlingRights };
 
-            // Setup button handlers
-            document.getElementById('roll-dice-btn').addEventListener('click', () => {
-                if (gameState.phase === 'setup') {
-                    // In setup, alternate between white and black
-                    const nextPlayer = (gameState.whiteRoll === null) ? 'white' : 
-                                     (gameState.blackRoll === null) ? 'black' : 'white';
-                    gameState.handleSetupRoll(nextPlayer);
-                } else if (gameState.phase === 'playing' && gameState.waitingForRoll) {
-                    gameState.handlePlayRoll();
-                }
-            });
+    this.board[tr][tc] = move.promo ? move.promo : piece;
+    this.board[fr][fc] = 0;
 
-            document.getElementById('reset-btn').addEventListener('click', () => {
-                gameState.reset();
-                renderer.updateBoard();
-            });
+    // En passant capture
+    if (move.enPassant) {
+      const capRow = fr; // captured pawn is on same row as moving pawn
+      this.board[capRow][tc] = 0;
+    }
 
-            gameState.updateUI();
-        });
-    </script>
+    // Castling: move rook
+    if (move.castle) {
+      const row = fr;
+      if (move.castle === 'K') {
+        this.board[row][5] = this.board[row][7];
+        this.board[row][7] = 0;
+      } else {
+        this.board[row][3] = this.board[row][0];
+        this.board[row][0] = 0;
+      }
+    }
+
+    // Update castling rights
+    if (Math.abs(piece) === KING) {
+      if (this.color(piece) === WHITE) { this.castlingRights.wK = false; this.castlingRights.wQ = false; }
+      else                              { this.castlingRights.bK = false; this.castlingRights.bQ = false; }
+    }
+    if (fr===7&&fc===0) this.castlingRights.wQ = false;
+    if (fr===7&&fc===7) this.castlingRights.wK = false;
+    if (fr===0&&fc===0) this.castlingRights.bQ = false;
+    if (fr===0&&fc===7) this.castlingRights.bK = false;
+
+    // En passant square
+    this.enPassantSq = move.dblPush ? [tr, tc] : null;
+
+    this._updateKingPos();
+
+    return { piece, captured, oldEP, oldCR, move };
+  }
+
+  _undoMove(undo) {
+    const { piece, captured, oldEP, oldCR, move } = undo;
+    const [fr,fc] = move.from;
+    const [tr,tc] = move.to;
+
+    this.board[fr][fc] = piece;
+    this.board[tr][tc] = captured;
+
+    if (move.enPassant) {
+      const capRow = fr;
+      this.board[capRow][tc] = -this.color(piece) * PAWN;
+    }
+
+    if (move.castle) {
+      const row = fr;
+      if (move.castle === 'K') {
+        this.board[row][7] = this.board[row][5];
+        this.board[row][5] = 0;
+      } else {
+        this.board[row][0] = this.board[row][3];
+        this.board[row][3] = 0;
+      }
+    }
+
+    this.enPassantSq = oldEP;
+    this.castlingRights = oldCR;
+    this._updateKingPos();
+  }
+
+  _kingPos(col) { return col === WHITE ? this.wKing : this.bKing; }
+
+  isAttacked(r, c, byColor) {
+    // Check if square (r,c) is attacked by byColor
+    const opp = -byColor;
+    // Pseudo-move check: temporarily pretend it's byColor's turn
+    const savedTurn = this.turn;
+    this.turn = byColor;
+    for (let rr = 0; rr < 8; rr++) {
+      for (let cc = 0; cc < 8; cc++) {
+        if (this.color(this.at(rr,cc)) !== byColor) continue;
+        const moves = this._pseudoMoves(rr,cc);
+        if (moves.some(m => m.to[0]===r && m.to[1]===c)) {
+          this.turn = savedTurn;
+          return true;
+        }
+      }
+    }
+    this.turn = savedTurn;
+    return false;
+  }
+
+  inCheck(col) {
+    const kp = this._kingPos(col);
+    if (!kp) return false;
+    return this.isAttacked(kp[0], kp[1], -col);
+  }
+
+  // Legal moves for a square
+  legalMoves(r, c) {
+    const piece = this.at(r,c);
+    if (!piece || this.color(piece) !== this.turn) return [];
+    const pseudo = this._pseudoMoves(r,c);
+    return pseudo.filter(m => {
+      // Castle: king can't pass through check
+      if (m.castle) {
+        const row = r;
+        const passTc = m.castle === 'K' ? 5 : 3;
+        if (this.inCheck(this.turn)) return false;
+        if (this.isAttacked(row, passTc, -this.turn)) return false;
+      }
+      const undo = this._applyMove(m);
+      const safe = !this.inCheck(this.turn);
+      this._undoMove(undo);
+      return safe;
+    });
+  }
+
+  allLegalMoves(col) {
+    const moves = [];
+    for (let r = 0; r < 8; r++)
+      for (let c = 0; c < 8; c++)
+        if (this.color(this.at(r,c)) === col) {
+          const savedTurn = this.turn;
+          this.turn = col;
+          moves.push(...this.legalMoves(r,c));
+          this.turn = savedTurn;
+        }
+    return moves;
+  }
+
+  // Execute a move; returns { ok, notation }
+  makeMove(from, to, promoChoice) {
+    const [fr,fc] = from; const [tr,tc] = to;
+    const piece = this.at(fr,fc);
+    if (!piece || this.color(piece) !== this.turn) return { ok:false };
+
+    let legal = this.legalMoves(fr,fc);
+    let move = legal.find(m => m.to[0]===tr && m.to[1]===tc && (!m.promo || m.promo===promoChoice));
+    if (!move && legal.some(m=>m.to[0]===tr&&m.to[1]===tc&&m.promo)) {
+      move = legal.find(m=>m.to[0]===tr&&m.to[1]===tc&&m.promo);
+    }
+    if (!move) return { ok:false };
+
+    const notation = this._notation(move, piece);
+    const undo = this._applyMove(move);
+    this.moveHistory.push({ move, undo, notation });
+    this.turn = -this.turn;
+    return { ok:true, notation, move };
+  }
+
+  _notation(move, piece) {
+    const files = 'abcdefgh';
+    const pnames = ['','','N','B','R','Q','K'];
+    const [fr,fc] = move.from; const [tr,tc] = move.to;
+    const ptype = this.pieceType(piece);
+    let s = '';
+    if (move.castle) return move.castle==='K'?'O-O':'O-O-O';
+    if (ptype !== PAWN) s = pnames[ptype];
+    else if (this.at(tr,tc)||move.enPassant) s = files[fc];
+    if (this.at(tr,tc)||move.enPassant) s += 'x';
+    s += files[tc] + (8-tr);
+    if (move.promo) s += '=' + pnames[this.pieceType(move.promo)];
+    return s;
+  }
+
+  isCheckmate(col) {
+    if (!this.inCheck(col)) return false;
+    const saved = this.turn;
+    this.turn = col;
+    const m = this.allLegalMoves(col);
+    this.turn = saved;
+    return m.length === 0;
+  }
+
+  isStalemate(col) {
+    if (this.inCheck(col)) return false;
+    const saved = this.turn;
+    this.turn = col;
+    const m = this.allLegalMoves(col);
+    this.turn = saved;
+    return m.length === 0;
+  }
+}
+
+/* ============================================================
+   GAME MANAGER (dice + phase)
+   ============================================================ */
+class GameManager {
+  constructor() {
+    this.userId = 'player_' + Math.random().toString(36).slice(2,8);
+    this.engine = new ChessEngine();
+    this.phase = 'setup';      // 'setup' | 'playing' | 'ended'
+    this.setupRolls = { [WHITE]: null, [BLACK]: null };
+    this.lastRoll = null;
+    this.waitingForRoll = false;
+    this.gameLog = [];
+
+    document.getElementById('user-id-display').textContent = this.userId;
+  }
+
+  rollDie() { return Math.floor(Math.random() * 6) + 1; }
+
+  // Setup phase: one roll per call, alternating
+  setupRoll() {
+    const wRolled = this.setupRolls[WHITE] !== null;
+    const bRolled = this.setupRolls[BLACK] !== null;
+
+    if (!wRolled) {
+      this.setupRolls[WHITE] = this.rollDie();
+      this.lastRoll = this.setupRolls[WHITE];
+      document.getElementById('roll-white').textContent = this.setupRolls[WHITE];
+    } else if (!bRolled) {
+      this.setupRolls[BLACK] = this.rollDie();
+      this.lastRoll = this.setupRolls[BLACK];
+      document.getElementById('roll-black').textContent = this.setupRolls[BLACK];
+
+      // Both rolled — evaluate
+      const w = this.setupRolls[WHITE], b = this.setupRolls[BLACK];
+      const wGot1 = w === 1, bGot1 = b === 1;
+
+      if (wGot1 && !bGot1) {
+        setTimeout(() => this._startGame(WHITE), 900);
+      } else if (bGot1 && !wGot1) {
+        setTimeout(() => this._startGame(BLACK), 900);
+      } else {
+        // Re-roll needed
+        const msg = (wGot1 && bGot1) ? 'Both rolled 1 — re-roll!' :
+                    (w === b) ? 'Same number — re-roll!' : 'No one rolled 1 — re-roll!';
+        setTimeout(() => {
+          this.setupRolls = { [WHITE]: null, [BLACK]: null };
+          document.getElementById('roll-white').textContent = '—';
+          document.getElementById('roll-black').textContent = '—';
+          this._updateUI(msg);
+        }, 1800);
+      }
+    }
+    this._updateUI();
+    this._animateDice(this.lastRoll);
+  }
+
+  _startGame(firstColor) {
+    this.phase = 'playing';
+    this.engine.turn = firstColor;
+    this.waitingForRoll = false;
+    this._log('Game started! ' + (firstColor===WHITE?'White':'Black') + ' goes first.');
+    this._updateUI();
+    if (renderer) renderer.createPieces();
+  }
+
+  // Play phase: called after a valid move
+  playRoll() {
+    if (!this.waitingForRoll || this.phase !== 'playing') return;
+    const roll = this.rollDie();
+    this.lastRoll = roll;
+    this._animateDice(roll);
+    const col = this.engine.turn; // still the player who just moved (turn not yet switched)
+    const colorName = col === WHITE ? 'White' : 'Black';
+
+    if (col === WHITE) document.getElementById('roll-white').textContent = roll;
+    else               document.getElementById('roll-black').textContent = roll;
+
+    if (roll === 1) {
+      this.waitingForRoll = false;
+      this._log(colorName + ' rolled 1 — continues!');
+      setTimeout(() => this._updateUI(), 400);
+    } else {
+      // Switch turn
+      this.engine.turn = -col;
+      this.waitingForRoll = false;
+      this._log(colorName + ' rolled ' + roll + ' — turn passes.');
+      // Check if new player is in check/checkmate
+      setTimeout(() => {
+        this._checkGameOver();
+        this._updateUI();
+      }, 400);
+    }
+  }
+
+  makeMove(from, to) {
+    if (this.phase !== 'playing' || this.waitingForRoll) return false;
+    const res = this.engine.makeMove(from, to);
+    if (!res.ok) return false;
+
+    // Engine has already switched turn internally; we need to check state before dice
+    const mover = -this.engine.turn; // the one who just moved
+    const colorName = mover === WHITE ? 'White' : 'Black';
+    this._log(colorName + ': ' + res.notation);
+
+    // Check opponent state
+    const opp = this.engine.turn;
+    if (this.engine.isCheckmate(opp)) {
+      this.phase = 'ended';
+      this._showGameOver(colorName + ' wins!', 'Checkmate!');
+      this._updateUI();
+      return true;
+    }
+    if (this.engine.isStalemate(opp)) {
+      this.phase = 'ended';
+      this._showGameOver('Draw!', 'Stalemate');
+      this._updateUI();
+      return true;
+    }
+
+    // Restore turn to mover so they can roll
+    this.engine.turn = mover;
+    this.waitingForRoll = true;
+    this._updateUI();
+    return true;
+  }
+
+  _checkGameOver() {
+    const col = this.engine.turn;
+    const name = col === WHITE ? 'White' : 'Black';
+    if (this.engine.isCheckmate(col)) {
+      this.phase = 'ended';
+      const winner = col === WHITE ? 'Black' : 'White';
+      this._showGameOver(winner + ' wins!', 'Checkmate!');
+    } else if (this.engine.isStalemate(col)) {
+      this.phase = 'ended';
+      this._showGameOver('Draw!', 'Stalemate');
+    }
+  }
+
+  _showGameOver(winner, reason) {
+    document.getElementById('go-winner').textContent = winner;
+    document.getElementById('go-reason').textContent = reason;
+    document.getElementById('go-trophy').textContent = winner.includes('Draw') ? '🤝' : '🏆';
+    document.getElementById('game-over-overlay').classList.add('visible');
+  }
+
+  _log(msg) {
+    this.gameLog.push(msg);
+    const log = document.getElementById('move-log');
+    const el = document.createElement('div');
+    el.className = 'move-log-entry';
+    el.textContent = msg;
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  _animateDice(val) {
+    const faces = ['⚀','⚁','⚂','⚃','⚄','⚅'];
+    const face = document.getElementById('dice-face');
+    const rollNum = document.getElementById('roll-num');
+    const rollLabel = document.getElementById('roll-label');
+
+    face.classList.remove('rolling');
+    void face.offsetWidth;
+    face.classList.add('rolling');
+
+    let i = 0;
+    const iv = setInterval(() => {
+      face.textContent = faces[Math.floor(Math.random()*6)];
+      i++;
+      if (i >= 10) {
+        clearInterval(iv);
+        face.textContent = faces[val - 1];
+        rollNum.textContent = val;
+        rollNum.className = 'roll-num ' + (val === 1 ? 'one' : 'other');
+        rollLabel.textContent = val === 1 ? '🎉 Continue your turn!' : 'Turn passes';
+      }
+    }, 60);
+  }
+
+  _updateUI(overrideStatus) {
+    const rollBtn = document.getElementById('btn-roll');
+    const phaseBadge = document.getElementById('phase-badge');
+    const topPlayer = document.getElementById('top-player');
+    const topStatus = document.getElementById('top-status');
+    const statusText = document.getElementById('status-text');
+    const badgeW = document.getElementById('badge-white');
+    const badgeB = document.getElementById('badge-black');
+
+    // Phase badge
+    phaseBadge.className = 'phase-badge ' + (this.phase==='playing'?'playing':this.phase==='ended'?'ended':'');
+    phaseBadge.textContent = this.phase.charAt(0).toUpperCase() + this.phase.slice(1);
+
+    if (this.phase === 'setup') {
+      rollBtn.disabled = false;
+      rollBtn.textContent = '🎲 Roll to Start';
+      topPlayer.textContent = '⚙️ Setup Phase';
+      const wRolled = this.setupRolls[WHITE] !== null;
+      topStatus.textContent = overrideStatus || (!wRolled ? 'White — roll for a 1!' : 'Black — roll for a 1!');
+      statusText.textContent = overrideStatus || 'First to roll 1 goes first';
+      statusText.className = 'status-value info';
+      badgeW.className = 'player-badge' + (!wRolled ? ' active' : '');
+      badgeB.className = 'player-badge' + (wRolled ? ' active' : '');
+    } else if (this.phase === 'playing') {
+      const col = this.engine.turn;
+      const colName = col === WHITE ? 'White' : 'Black';
+      rollBtn.disabled = !this.waitingForRoll;
+      rollBtn.textContent = this.waitingForRoll ? '🎲 Roll Dice' : '♟️ Make a Move';
+      topPlayer.textContent = (col===WHITE?'⬜':'⬛') + ' ' + colName + "'s Turn";
+      const check = this.engine.inCheck(col);
+      topStatus.textContent = overrideStatus || (this.waitingForRoll ? 'Roll dice after your move' : (check ? '⚠️ In check — move carefully!' : 'Select a piece to move'));
+      statusText.textContent = check ? '⚠️ Check!' : (this.waitingForRoll ? 'Roll the dice!' : 'Your move');
+      statusText.className = 'status-value ' + (check ? 'check' : (this.waitingForRoll ? 'info' : 'ok'));
+      badgeW.className = 'player-badge' + (col===WHITE?' active':'');
+      badgeB.className = 'player-badge' + (col===BLACK?' active':'');
+    } else if (this.phase === 'ended') {
+      rollBtn.disabled = true;
+      rollBtn.textContent = '🎲 Game Over';
+      statusText.textContent = 'Game ended';
+      statusText.className = 'status-value';
+    }
+  }
+
+  reset() {
+    this.engine = new ChessEngine();
+    this.phase = 'setup';
+    this.setupRolls = { [WHITE]: null, [BLACK]: null };
+    this.lastRoll = null;
+    this.waitingForRoll = false;
+    this.gameLog = [];
+    document.getElementById('roll-white').textContent = '—';
+    document.getElementById('roll-black').textContent = '—';
+    document.getElementById('roll-num').textContent = '—';
+    document.getElementById('roll-num').className = 'roll-num';
+    document.getElementById('roll-label').textContent = 'No roll yet';
+    document.getElementById('dice-face').textContent = '🎲';
+    document.getElementById('move-log').innerHTML = '';
+    document.getElementById('game-over-overlay').classList.remove('visible');
+    this._updateUI();
+    if (renderer) renderer.fullReset();
+  }
+}
+
+/* ============================================================
+   THREE.JS RENDERER
+   ============================================================ */
+let renderer = null;
+
+class ChessRenderer {
+  constructor(gm) {
+    this.gm = gm;
+    this.selected = null;   // { r, c }
+    this.legalSquares = []; // [[r,c],...]
+    this.pieceMeshes = [];  // { r, c, mesh }
+    this.highlightMeshes = [];
+    this.boardGroup = new THREE.Group();
+
+    if (!this._webGLOK()) { this._noWebGL(); return; }
+
+    try {
+      this._initThree();
+      this._buildBoard();
+      this.createPieces();
+      this._events();
+      this._loop();
+    } catch (e) {
+      console.error('Renderer init failed:', e);
+      this._noWebGL();
+    }
+  }
+
+  _webGLOK() {
+    try {
+      const c = document.createElement('canvas');
+      return !!(window.WebGLRenderingContext && (c.getContext('webgl') || c.getContext('experimental-webgl')));
+    } catch { return false; }
+  }
+
+  _noWebGL() {
+    document.getElementById('canvas-container').innerHTML = `
+      <div class="webgl-fallback">
+        <div class="webgl-fallback-box">
+          <h2>WebGL Required</h2>
+          <p>3D rendering needs WebGL, which isn't available in this environment. Open this page in a modern browser to play.</p>
+        </div>
+      </div>`;
+  }
+
+  _initThree() {
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x0d1117);
+
+    this.camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 200);
+    this.camera.position.set(0, 14, 14);
+
+    this.webgl = new THREE.WebGLRenderer({ antialias: true });
+    this.webgl.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.webgl.setSize(innerWidth, innerHeight);
+    this.webgl.shadowMap.enabled = true;
+    this.webgl.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.getElementById('canvas-container').appendChild(this.webgl.domElement);
+
+    this.controls = new THREE.OrbitControls(this.camera, this.webgl.domElement);
+    this.controls.target.set(0, 0, 0);
+    this.controls.minDistance = 6;
+    this.controls.maxDistance = 30;
+    this.controls.maxPolarAngle = Math.PI / 2 - 0.04;
+    this.controls.update();
+
+    this.raycaster = new THREE.Raycaster();
+    this.mouse = new THREE.Vector2();
+
+    // Lights
+    const amb = new THREE.AmbientLight(0xffffff, 0.5);
+    this.scene.add(amb);
+
+    const sun = new THREE.DirectionalLight(0xfff8e7, 1.0);
+    sun.position.set(8, 18, 10);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 60;
+    sun.shadow.camera.left = -10; sun.shadow.camera.right = 10;
+    sun.shadow.camera.top  =  10; sun.shadow.camera.bottom= -10;
+    this.scene.add(sun);
+
+    const fill = new THREE.DirectionalLight(0x8bb8ff, 0.4);
+    fill.position.set(-8, 10, -8);
+    this.scene.add(fill);
+
+    this.scene.add(this.boardGroup);
+
+    window.addEventListener('resize', () => {
+      this.camera.aspect = innerWidth / innerHeight;
+      this.camera.updateProjectionMatrix();
+      this.webgl.setSize(innerWidth, innerHeight);
+    });
+  }
+
+  // Convert board [row, col] to world X, Z
+  _toWorld(r, c) { return [c - 3.5, r - 3.5]; }
+
+  _buildBoard() {
+    // Board base
+    const baseGeo = new THREE.BoxGeometry(9.2, 0.3, 9.2);
+    const baseMat = new THREE.MeshStandardMaterial({ color: 0x5a3a1a, roughness:0.8, metalness:0.1 });
+    const base = new THREE.Mesh(baseGeo, baseMat);
+    base.position.y = -0.25;
+    base.receiveShadow = true;
+    this.boardGroup.add(base);
+
+    // Squares
+    const lightMat = new THREE.MeshStandardMaterial({ color: 0xf0d9b5, roughness:0.7 });
+    const darkMat  = new THREE.MeshStandardMaterial({ color: 0xb58863, roughness:0.7 });
+    this.squareMeshes = [];
+
+    for (let r = 0; r < 8; r++) {
+      this.squareMeshes[r] = [];
+      for (let c = 0; c < 8; c++) {
+        const geo = new THREE.BoxGeometry(1, 0.12, 1);
+        const mat = ((r + c) % 2 === 0 ? lightMat : darkMat).clone();
+        const mesh = new THREE.Mesh(geo, mat);
+        const [wx, wz] = this._toWorld(r, c);
+        mesh.position.set(wx, 0, wz);
+        mesh.receiveShadow = true;
+        mesh.userData = { type:'square', r, c };
+        this.boardGroup.add(mesh);
+        this.squareMeshes[r][c] = mesh;
+      }
+    }
+
+    // Coordinate labels
+    const files = 'ABCDEFGH';
+    for (let i = 0; i < 8; i++) {
+      this._label(files[i], i - 3.5,  0.1, -4.7);
+      this._label(files[i], i - 3.5,  0.1,  4.7);
+      this._label((8-i).toString(), -4.7, 0.1, i - 3.5);
+      this._label((8-i).toString(),  4.7, 0.1, i - 3.5);
+    }
+  }
+
+  _label(text, x, y, z) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'rgba(0,0,0,0)';
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.fillStyle = '#c8a878';
+    ctx.font = 'bold 72px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 64, 64);
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.set(x, y, z);
+    sprite.scale.set(0.6, 0.6, 1);
+    this.boardGroup.add(sprite);
+  }
+
+  // Piece geometry factory
+  _pieceGeo(type) {
+    switch (type) {
+      case PAWN: {
+        const g = new THREE.Group();
+        g.add(this._cyl(0.28, 0.32, 0.18));      // base
+        g.add(this._cyl(0.14, 0.20, 0.34, 0.24)); // stem
+        const top = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), new THREE.MeshStandardMaterial());
+        top.position.y = 0.52;
+        g.add(top);
+        return g;
+      }
+      case KNIGHT: {
+        const g = new THREE.Group();
+        g.add(this._cyl(0.30, 0.35, 0.18));
+        g.add(this._cyl(0.16, 0.22, 0.30, 0.24));
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.40, 0.22), new THREE.MeshStandardMaterial());
+        head.position.set(0, 0.65, 0.05);
+        head.rotation.x = 0.3;
+        g.add(head);
+        const snout = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.16, 0.24), new THREE.MeshStandardMaterial());
+        snout.position.set(0, 0.55, 0.22);
+        g.add(snout);
+        return g;
+      }
+      case BISHOP: {
+        const g = new THREE.Group();
+        g.add(this._cyl(0.30, 0.35, 0.18));
+        g.add(this._cyl(0.12, 0.22, 0.50, 0.24));
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), new THREE.MeshStandardMaterial());
+        ball.position.y = 0.78;
+        g.add(ball);
+        const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.18, 8), new THREE.MeshStandardMaterial());
+        tip.position.y = 1.03;
+        g.add(tip);
+        return g;
+      }
+      case ROOK: {
+        const g = new THREE.Group();
+        g.add(this._cyl(0.32, 0.38, 0.18, 0, 4));
+        g.add(this._cyl(0.24, 0.30, 0.46, 0.24, 4));
+        const top = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.26, 0.22, 4), new THREE.MeshStandardMaterial());
+        top.position.y = 0.78;
+        g.add(top);
+        return g;
+      }
+      case QUEEN: {
+        const g = new THREE.Group();
+        g.add(this._cyl(0.32, 0.38, 0.18));
+        g.add(this._cyl(0.12, 0.24, 0.60, 0.24));
+        const mid = new THREE.Mesh(new THREE.SphereGeometry(0.20, 16, 12), new THREE.MeshStandardMaterial());
+        mid.position.y = 0.92;
+        g.add(mid);
+        for (let i = 0; i < 5; i++) {
+          const pt = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.22, 8), new THREE.MeshStandardMaterial());
+          const a = (i / 5) * Math.PI * 2;
+          pt.position.set(Math.sin(a)*0.18, 1.20, Math.cos(a)*0.18);
+          pt.rotation.z = -Math.sin(a)*0.4;
+          pt.rotation.x =  Math.cos(a)*0.4;
+          g.add(pt);
+        }
+        return g;
+      }
+      case KING: {
+        const g = new THREE.Group();
+        g.add(this._cyl(0.32, 0.38, 0.18));
+        g.add(this._cyl(0.13, 0.25, 0.62, 0.24));
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(0.20, 16, 12), new THREE.MeshStandardMaterial());
+        ball.position.y = 0.96;
+        g.add(ball);
+        const cv = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.36, 0.10), new THREE.MeshStandardMaterial());
+        cv.position.y = 1.28;
+        g.add(cv);
+        const ch = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.10, 0.10), new THREE.MeshStandardMaterial());
+        ch.position.y = 1.36;
+        g.add(ch);
+        return g;
+      }
+    }
+    return new THREE.Group();
+  }
+
+  _cyl(rt, rb, h, y=0, seg=16) {
+    const geo = new THREE.CylinderGeometry(rt, rb, h, seg);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial());
+    mesh.position.y = y + h/2;
+    return mesh;
+  }
+
+  _applyMaterial(group, mat) {
+    if (group.isMesh) { group.material = mat; group.castShadow = true; return; }
+    group.children.forEach(c => this._applyMaterial(c, mat));
+  }
+
+  createPieces() {
+    // Remove old pieces
+    this.pieceMeshes.forEach(pm => this.boardGroup.remove(pm.mesh));
+    this.pieceMeshes = [];
+
+    const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness:0.4, metalness:0.1 });
+    const blackMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness:0.5, metalness:0.2 });
+
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const p = this.gm.engine.board[r][c];
+        if (!p) continue;
+        const col = p > 0 ? WHITE : BLACK;
+        const type = Math.abs(p);
+        const geo = this._pieceGeo(type);
+        this._applyMaterial(geo, col === WHITE ? whiteMat.clone() : blackMat.clone());
+        const [wx, wz] = this._toWorld(r, c);
+        geo.position.set(wx, 0.06, wz);
+        if (col === BLACK) geo.rotation.y = Math.PI;
+        geo.userData = { type:'piece', r, c };
+        this.boardGroup.add(geo);
+        this.pieceMeshes.push({ r, c, mesh: geo });
+      }
+    }
+  }
+
+  _clearHighlights() {
+    this.highlightMeshes.forEach(m => this.boardGroup.remove(m));
+    this.highlightMeshes = [];
+    // Reset square colors
+    for (let r = 0; r < 8; r++)
+      for (let c = 0; c < 8; c++) {
+        const sq = this.squareMeshes[r][c];
+        if (sq) sq.material.emissive = new THREE.Color(0x000000);
+      }
+  }
+
+  _highlight(r, c, type) {
+    const [wx, wz] = this._toWorld(r, c);
+    const geo = new THREE.RingGeometry(0.30, 0.44, 32);
+    const col = type === 'select' ? 0x58a6ff : (type === 'move' ? 0x3fb950 : 0xf85149);
+    const mat = new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide, transparent: true, opacity: 0.7 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(wx, 0.07, wz);
+    this.boardGroup.add(mesh);
+    this.highlightMeshes.push(mesh);
+  }
+
+  _getClickTarget(event) {
+    const rect = this.webgl.domElement.getBoundingClientRect();
+    this.mouse.x =  ((event.clientX - rect.left) / rect.width)  * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top)  / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+
+    const allMeshes = [];
+    this.boardGroup.traverse(obj => { if (obj.isMesh) allMeshes.push(obj); });
+    const hits = this.raycaster.intersectObjects(allMeshes);
+    if (!hits.length) return null;
+
+    let obj = hits[0].object;
+    // Walk up to find userData
+    while (obj && !obj.userData.type && obj.parent) obj = obj.parent;
+    return obj;
+  }
+
+  _events() {
+    this.webgl.domElement.addEventListener('click', (e) => {
+      const gm = this.gm;
+      if (gm.phase !== 'playing' || gm.waitingForRoll) return;
+
+      const target = this._getClickTarget(e);
+      if (!target) { this._deselect(); return; }
+
+      const { type, r, c } = target.userData;
+
+      if (type === 'square') {
+        if (this.selected) {
+          // Try to move
+          const moved = gm.makeMove([this.selected.r, this.selected.c], [r, c]);
+          if (moved) {
+            this.createPieces();
+            this._deselect();
+          } else {
+            // Maybe clicking a friendly piece
+            const p = gm.engine.at(r, c);
+            if (p && gm.engine.color(p) === gm.engine.turn) {
+              this._select(r, c);
+            } else {
+              this._deselect();
+            }
+          }
+        }
+      } else if (type === 'piece') {
+        const p = gm.engine.at(r, c);
+        if (p && gm.engine.color(p) === gm.engine.turn) {
+          this._select(r, c);
+        } else if (this.selected) {
+          // Try to capture
+          const moved = gm.makeMove([this.selected.r, this.selected.c], [r, c]);
+          if (moved) {
+            this.createPieces();
+            this._deselect();
+          }
+        }
+      }
+    });
+  }
+
+  _select(r, c) {
+    this._clearHighlights();
+    this.selected = { r, c };
+    this._highlight(r, c, 'select');
+    const moves = this.gm.engine.legalMoves(r, c);
+    this.legalSquares = moves.map(m => m.to);
+    for (const [tr, tc] of this.legalSquares) this._highlight(tr, tc, 'move');
+  }
+
+  _deselect() {
+    this._clearHighlights();
+    this.selected = null;
+    this.legalSquares = [];
+  }
+
+  fullReset() {
+    this._deselect();
+    this.createPieces();
+  }
+
+  _loop() {
+    requestAnimationFrame(() => this._loop());
+    this.controls.update();
+    this.webgl.render(this.scene, this.camera);
+  }
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+const gm = new GameManager();
+
+// Defer renderer init so DOM is ready
+window.addEventListener('DOMContentLoaded', () => {
+  renderer = new ChessRenderer(gm);
+  gm._updateUI();
+
+  document.getElementById('btn-roll').addEventListener('click', () => {
+    if (gm.phase === 'setup') gm.setupRoll();
+    else if (gm.phase === 'playing' && gm.waitingForRoll) gm.playRoll();
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', () => gm.reset());
+  document.getElementById('btn-go-reset').addEventListener('click', () => gm.reset());
+});
+</script>
 </body>
 </html>
